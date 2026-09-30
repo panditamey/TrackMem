@@ -2,7 +2,7 @@
 
     python inference.py                                   # best ckpt, first Test rally video
     python inference.py --video my_match.mp4 --out out/my_match_pred.mp4
-    python inference.py --ckpt runs/b0_v5like/best.pt --video data/TracknetV2/Test/match1/video/1_05_02.mp4
+    python inference.py --ckpt runs/tracknetv5/best.pt --video data/TracknetV2/Test/match1/video/1_05_02.mp4
 
 Outputs:
     <out>.mp4     annotated video: prediction (red) + trail, GT (green) if a dataset CSV exists
@@ -23,7 +23,7 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from models.baseline import build_model
+from models import build_model
 from utils.common import amp_dtype
 from utils.inference import predict_rally
 
@@ -126,7 +126,7 @@ def to_h264(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="runs/b0_v5like/best.pt")
+    ap.add_argument("--ckpt", default="runs/tracknetv5/best.pt")
     ap.add_argument("--video", default=None, help="defaults to the first video of the Test split")
     ap.add_argument("--out", default=None, help="output .mp4 path (default: outputs/<video>_pred.mp4)")
     ap.add_argument("--trail", type=int, default=8, help="frames of predicted trajectory to draw")

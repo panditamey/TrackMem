@@ -1,6 +1,6 @@
 """Evaluate a checkpoint on a split, overall and per subset.
 
-    python evaluate.py --ckpt runs/b0_v5like/best.pt --split test
+    python evaluate.py --ckpt runs/tracknetv5/best.pt --split test
 Writes <ckpt_dir>/eval_<split>/{frames.csv, metrics.json}. frames.csv holds per-frame
 predictions, reusable by post-hoc baselines (e.g. Kalman filter) without rerunning the model.
 """
@@ -11,7 +11,7 @@ import os
 import torch
 
 from datasets.tracknet_dataset import load_rallies
-from models.baseline import build_model
+from models import build_model
 from utils.common import amp_dtype, apply_overrides, load_config
 from utils.inference import evaluate_rallies, format_metrics
 

@@ -1,5 +1,5 @@
-# B0: TrackNetV5-like baseline (V2 U-Net + MDD input, WBCE), no R-STR, no memory.
-experiment: b0_v5like
+# Model is chosen with `train.py --model <name>` (overrides model.name).
+experiment: null              # run directory name under train.out_dir; null = model name
 seed: 42
 
 data:
@@ -12,22 +12,26 @@ data:
   test_splits: [Test]
   seq_len: 3                  # frames per window (t-1, t, t+1), as in V5
   train_stride: 1             # window center step when building training samples
-  heatmap_radius: 2.5         # binary disk radius (px @ 512x288), TrackNetV3 convention
+  heatmap_radius: 4.2         # binary disk radius (px @ 512x288); V5 SDK target ~10.5 px @ 1280x720
   hflip: 0.5
   limit_rallies: null         # int: use only first N rallies per split (smoke tests)
 
 model:
-  name: b0
-  motion: mdd                 # mdd | none  (none = plain RGB stack, V2-style)
-  width_mult: 1.0
+  name: tracknetv5            # tracknetv5 | tracknetv6 (coming)
+  tracknetv5:                 # defaults follow the official TrackNetV5 SDK
+    rstr: true                # false = MDD + U-Net only (no R-STR head)
+    conv_order: conv_relu_bn  # conv_relu_bn (SDK) | conv_bn_relu
+    upsample: bilinear        # bilinear (SDK) | nearest
+    mdd_init: [0.2, 0.15]
 
 train:
   epochs: 30
-  batch_size: 8               # V5 used 2; larger batch for faster Colab runs
+  batch_size: 8               # V5 used 2
   lr: 1.0e-4
   weight_decay: 1.0e-2
   milestones: [20, 25]
   gamma: 0.1
+  grad_clip: 1.0              # max grad norm (V5 SDK); null = off
   num_workers: 8
   amp: auto                   # auto | bf16 | fp16 | off
   compile: false

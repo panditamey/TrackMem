@@ -1,7 +1,7 @@
 """Train a TrackNet model.
 
-    python train.py --config config.yaml [--set train.batch_size=4 data.limit_rallies=2 ...]
-    python train.py --config config.yaml --resume runs/b0_v5like/last.pt
+    python train.py --model tracknetv5 [--set train.batch_size=4 model.tracknetv5.rstr=false ...]
+    python train.py --model tracknetv5 --resume runs/tracknetv5/last.pt
 """
 import argparse
 import json
@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 
 from datasets.tracknet_dataset import WindowDataset, disk_heatmap_torch, load_rallies
 from losses.heatmap import wbce_loss
-from models.baseline import build_model
+from models import MODELS, build_model
 from utils.common import amp_dtype, load_config, seed_everything
 from utils.inference import evaluate_rallies, format_metrics
 
@@ -21,11 +21,15 @@ from utils.inference import evaluate_rallies, format_metrics
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--model", choices=MODELS, default=None, help="overrides model.name in the config")
     ap.add_argument("--set", nargs="*", default=[], help="overrides, e.g. train.epochs=1")
     ap.add_argument("--resume", default=None)
     args = ap.parse_args()
 
     cfg = load_config(args.config, args.set)
+    if args.model:
+        cfg["model"]["name"] = args.model
+    cfg["experiment"] = cfg.get("experiment") or cfg["model"]["name"]
     d, t = cfg["data"], cfg["train"]
     seed_everything(cfg["seed"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,7 +47,8 @@ def main():
           f"| device={device} amp={amp}")
 
     model = build_model(cfg).to(device).to(memory_format=torch.channels_last)
-    print(f"params={sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
+    print(f"model={cfg['model']['name']} params={sum(p.numel() for p in model.parameters()) / 1e6:.2f}M "
+          f"-> {out_dir}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=t["lr"], weight_decay=t["weight_decay"])
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, t["milestones"], t["gamma"])
     scaler = torch.amp.GradScaler(enabled=amp == torch.float16)
@@ -78,6 +83,9 @@ def main():
             loss = wbce_loss(logits, target)
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
+            if t.get("grad_clip"):
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), t["grad_clip"])
             scaler.step(optimizer)
             scaler.update()
 
