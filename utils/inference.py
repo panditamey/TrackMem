@@ -53,23 +53,73 @@ def predict_rally(model, rally, seq_len, device, threshold, batch_size=16, ensem
     return out
 
 
+@torch.no_grad()
+def predict_rallies_recurrent(model, rallies, device, amp=None, batch_size=16, memory_mode="normal",
+                              threshold=0.5, progress=False):
+    """Run a recurrent model (TrackMem) frame by frame over whole rallies, several rallies in
+    parallel. memory_mode='reset' clears the memory every step (memory-use test).
+    Returns {rally key: dict of per-frame arrays} in input space."""
+    results = {}
+    chunks = [rallies[i:i + batch_size] for i in range(0, len(rallies), batch_size)]
+    bar = None
+    if progress:
+        from tqdm import tqdm
+        bar = tqdm(total=sum(len(r) for r in rallies), unit="frame", desc="eval")
+    for chunk in chunks:
+        b, lens = len(chunk), [len(r) for r in chunk]
+        dt = torch.tensor([[30.0 / r.fps] for r in chunk], device=device)
+        state = model.memory.init_cold(b, device, model.w, model.h)
+        rec = {r.key: {k: np.zeros(len(r)) for k in ("vis_prob", "x", "y", "peak", "latent_x", "latent_y")}
+               for r in chunk}
+        for c in range(max(lens)):
+            batch = np.stack([r.frames[r.window(min(c, len(r) - 1), 3)] for r in chunk])
+            frames = torch.from_numpy(batch).to(device).permute(0, 1, 4, 2, 3).float() / 255.0
+            if memory_mode == "reset":
+                state = model.memory.init_cold(b, device, model.w, model.h)
+            with torch.autocast(device.type, dtype=amp, enabled=amp is not None):
+                out, state, _ = model.step(frames, state, dt)
+            ro = {k: v.float().cpu().numpy() for k, v in model.readout(out, state).items()}
+            for i, r in enumerate(chunk):
+                if c < lens[i]:
+                    for k in rec[r.key]:
+                        rec[r.key][k][c] = ro[k][i]
+            if bar:
+                bar.update(sum(c < n for n in lens))
+        for r in chunk:
+            p = rec[r.key]
+            p["vis"] = (p["vis_prob"] > threshold).astype(np.int64)
+            results[r.key] = p
+    if bar:
+        bar.close()
+    return results
+
+
 def evaluate_rallies(model, rallies, cfg, device, amp=None, progress=False):
     """Returns (per-frame DataFrame, metrics dict keyed by space -> subset -> summary)."""
     e, d = cfg["eval"], cfg["data"]
     model.eval()
+    recurrent = getattr(model, "recurrent", False)
+    if recurrent:
+        preds = predict_rallies_recurrent(model, rallies, device, amp, e["batch_size"],
+                                          e.get("memory_mode", "normal"), e["threshold"], progress)
     rows = []
     it = rallies
-    if progress:
+    if progress and not recurrent:
         from tqdm import tqdm
         it = tqdm(rallies, desc="eval")
     for r in it:
-        p = predict_rally(model, r, d["seq_len"], device, e["threshold"], e["batch_size"],
-                          e["ensemble"], amp)
+        if recurrent:
+            p = preds[r.key]
+        else:
+            p = predict_rally(model, r, d["seq_len"], device, e["threshold"], e["batch_size"],
+                              e["ensemble"], amp)
         tags = frame_tags(r.vis, r.xy, d["height"], cfg)
         df = pd.DataFrame({"rally": r.key, "frame": np.arange(len(r)), "fps": r.fps,
                            "gt_vis": r.vis, "gt_x": r.xy[:, 0], "gt_y": r.xy[:, 1],
-                           "pred_vis": p["vis"], "pred_x": p["x"], "pred_y": p["y"],
-                           "peak": p["peak"]})
+                           "pred_vis": p["vis"], "pred_x": np.where(p["vis"] == 1, p["x"], np.nan),
+                           "pred_y": np.where(p["vis"] == 1, p["y"], np.nan), "peak": p["peak"]})
+        if recurrent:
+            df["vis_prob"], df["latent_x"], df["latent_y"] = p["vis_prob"], p["latent_x"], p["latent_y"]
         for k, v in tags.items():
             df[f"tag_{k}"] = v
         rows.append(df)

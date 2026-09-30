@@ -1,6 +1,7 @@
+from .trackmem import TrackMem
 from .tracknetv5 import TrackNetV5
 
-MODELS = ("tracknetv5",)
+MODELS = ("tracknetv5", "trackmem")
 
 # Checkpoints saved before the TrackNetV5 port (model name "b0") were TrackNetV5 without R-STR
 # using Conv -> BN -> ReLU, nearest upsampling and a biased head. Kept so they still load.
@@ -16,4 +17,6 @@ def build_model(cfg):
                           **_LEGACY[name])
     if name == "tracknetv5":
         return TrackNetV5(d["seq_len"], (d["height"], d["width"]), **m.get("tracknetv5", {}))
+    if name == "trackmem":
+        return TrackMem(d["seq_len"], (d["height"], d["width"]), **m.get("trackmem", {}))
     raise ValueError(f"unknown model {name!r}; choose from {MODELS}")

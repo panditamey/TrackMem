@@ -125,3 +125,54 @@ class WindowDataset(Dataset):
             "vis": torch.from_numpy(vis),
             "xy": torch.from_numpy(xy),
         }
+
+
+class SequenceDataset(Dataset):
+    """Recurrent training samples: `steps` consecutive windows (steps + 2 frames) from one rally,
+    plus GT kinematics at the frame before the first window centre (memory initialisation).
+
+    Sequences tile each rally with stride `steps`; the start is jittered per sample.
+    """
+
+    def __init__(self, rallies, cfg, steps, train=True):
+        d = cfg["data"]
+        self.rallies, self.steps = rallies, steps
+        self.w = d["width"]
+        self.hflip = d["hflip"] if train else 0.0
+        self.samples = [(ri, s) for ri, r in enumerate(rallies)
+                        for s in range(0, max(len(r) - steps - 1, 0), steps)]
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, i):
+        ri, base = self.samples[i]
+        r = self.rallies[ri]
+        t0 = min(base + np.random.randint(self.steps), len(r) - self.steps - 2)
+        idx = np.arange(t0, t0 + self.steps + 2)
+        frames = np.ascontiguousarray(r.frames[idx])
+        vis = r.train_vis[idx].copy()
+        xy = np.nan_to_num(r.xy[idx].copy(), nan=0.0)
+
+        dt = 30.0 / r.fps
+        seen = lambda t: t >= 0 and r.train_vis[t] == 1
+        pos = lambda t: r.xy[t].astype(np.float32)
+        m_p, m_v, m_a = seen(t0), seen(t0) and seen(t0 - 1), seen(t0) and seen(t0 - 1) and seen(t0 - 2)
+        init_p = pos(t0) if m_p else np.zeros(2, np.float32)
+        init_v = (pos(t0) - pos(t0 - 1)) / dt if m_v else np.zeros(2, np.float32)
+        init_a = (init_v - (pos(t0 - 1) - pos(t0 - 2)) / dt) / dt if m_a else np.zeros(2, np.float32)
+
+        if self.hflip and np.random.rand() < self.hflip:
+            frames = frames[:, :, ::-1].copy()
+            xy[:, 0] = np.where(vis == 1, self.w - 1 - xy[:, 0], 0.0)
+            init_p[0] = self.w - 1 - init_p[0] if m_p else 0.0
+            init_v[0], init_a[0] = -init_v[0], -init_a[0]
+
+        return {
+            "frames": torch.from_numpy(frames).permute(0, 3, 1, 2),   # (S + 2, 3, H, W) uint8
+            "vis": torch.from_numpy(vis), "xy": torch.from_numpy(xy),
+            "init_p": torch.from_numpy(init_p), "init_v": torch.from_numpy(init_v.astype(np.float32)),
+            "init_a": torch.from_numpy(init_a.astype(np.float32)),
+            "m_p": torch.tensor(m_p), "m_v": torch.tensor(m_v), "m_a": torch.tensor(m_a),
+            "dt": torch.tensor([dt], dtype=torch.float32),
+        }

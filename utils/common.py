@@ -19,8 +19,19 @@ def apply_overrides(cfg, overrides):
         *parents, leaf = key.split(".")
         for p in parents:
             node = node[p]
-        node[leaf] = yaml.safe_load(value)
+        node[leaf] = _parse(value)
     return cfg
+
+
+def _parse(value):
+    """YAML scalar, but also accept numbers YAML 1.1 reads as strings (e.g. '3e-4')."""
+    v = yaml.safe_load(value)
+    if isinstance(v, str):
+        try:
+            return float(v)
+        except ValueError:
+            pass
+    return v
 
 
 def seed_everything(seed):

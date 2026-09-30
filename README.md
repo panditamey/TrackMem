@@ -3,7 +3,10 @@
 Research code for a lightweight persistent-memory tiny-object tracker (shuttlecock), trained from scratch.
 
 Models (`--model`):
-- `trackmem`: TrackNet with persistent kinematic memory (in progress).
+- `trackmem`: TrackNetV5 + a learned persistent kinematic memory (position, velocity, acceleration,
+  uncertainty, latent state) fed back into detection as prior heatmaps, with visibility and sub-pixel
+  offset heads. Trained recurrently on 8-frame sequences; inference carries the memory across whole
+  rallies.
 - `tracknetv5`: baseline. Re-implementation of [TrackNetV5](https://arxiv.org/abs/2512.02789), verified
   output-equivalent to the [official code](https://github.com/thaonan/TrackNetV5-SDK) (14.77M params).
   Trained with our own recipe and evaluated on the official held-out Test matches, so numbers are not
@@ -21,9 +24,12 @@ python tools/extract_frames.py --root data/TracknetV2 --out data/cache/frames_51
 ## Train / evaluate
 
 ```bash
-python train.py --model tracknetv5                        # any setting: --set train.batch_size=4 ...
-python train.py --model tracknetv5 --resume runs/tracknetv5/last.pt
-python evaluate.py --ckpt runs/tracknetv5/best.pt --split test
+python train.py --model trackmem                          # any setting: --set train.batch_size=4 ...
+python train.py --model tracknetv5
+python train.py --model trackmem --resume runs/trackmem/last.pt
+python evaluate.py --ckpt runs/trackmem/best.pt --split test
+python evaluate.py --ckpt runs/trackmem/best.pt --split val --set eval.memory_mode=reset   # memory-use test
+python tools/kalman_baseline.py --frames runs/tracknetv5/eval_val/frames.csv            # open-loop control
 ```
 
 Evaluation reports TP/FP1/FP2/TN/FN metrics at 4 px tolerance in both 1280x720 and 512x288 space,
@@ -33,11 +39,12 @@ per-frame predictions to `eval_<split>/frames.csv`.
 ## Annotated video
 
 ```bash
-python inference.py                                   # runs/tracknetv5/best.pt, first Test rally video
+python inference.py --ckpt runs/trackmem/best.pt       # first Test rally video
 python inference.py --video match.mp4 --out outputs/match_pred.mp4
 ```
-Writes the annotated video (prediction red + trail, GT green when a dataset CSV exists) and a CSV of
-predictions in the dataset label format (`Frame,Visibility,X,Y,Peak`).
+Writes the annotated video (prediction red + trail, TrackMem memory estimate yellow while undetected,
+GT green when a dataset CSV exists) and a CSV of predictions in the dataset label format
+(`Frame,Visibility,X,Y,Peak`, plus `VisProb,LatentX,LatentY` for TrackMem).
 
 ## Colab
 

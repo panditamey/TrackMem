@@ -5,10 +5,13 @@
     python inference.py --ckpt runs/tracknetv5/best.pt --video data/TracknetV2/Test/match1/video/1_05_02.mp4
 
 Outputs:
-    <out>.mp4     annotated video: prediction (red) + trail, GT (green) if a dataset CSV exists
-    <out>.csv     predictions in the dataset label format: Frame,Visibility,X,Y (+ Peak), video resolution
+    <out>.mp4     annotated video: prediction (red) + trail, GT (green) if a dataset CSV exists,
+                  TrackMem memory estimate while the shuttle is not detected (yellow)
+    <out>.csv     predictions in the dataset label format: Frame,Visibility,X,Y (+ Peak; TrackMem also
+                  VisProb, LatentX, LatentY), video resolution
 
-Long videos are processed in overlapping chunks, so memory stays bounded.
+The model type comes from the checkpoint. TrackNetV5 runs overlapping chunks; TrackMem streams
+the video frame by frame with its memory carried across the whole video.
 Frames are resized to 512x288 for the model; non-16:9 videos get stretched (a warning is printed).
 """
 import argparse
@@ -75,6 +78,40 @@ def predict_video(model, path, cfg, device, amp, chunk=1024):
     return {k: np.concatenate(v) if v else np.zeros(0) for k, v in out.items()}
 
 
+@torch.no_grad()
+def predict_video_recurrent(model, path, cfg, device, amp):
+    """Stream a video through a recurrent model (TrackMem), carrying memory across the whole video.
+    Frame c is processed once frame c+1 is decoded (one-frame lookahead, as in training)."""
+    W, H = cfg["data"]["width"], cfg["data"]["height"]
+    cap = cv2.VideoCapture(path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    dt = torch.tensor([[30.0 / (cap.get(cv2.CAP_PROP_FPS) or 30.0)]], device=device)
+    state = model.memory.init_cold(1, device, W, H)
+    buf, out, n, c, eof = {}, {k: [] for k in ("vis_prob", "x", "y", "peak", "latent_x", "latent_y")}, 0, 0, False
+    bar = tqdm(total=total, unit="frame", desc="infer")
+    while not eof:
+        ok, frame = cap.read()
+        if ok:
+            buf[n] = cv2.cvtColor(cv2.resize(frame, (W, H), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)
+            n += 1
+        eof = not ok
+        while c < n and (c + 1 < n or eof):
+            idx = np.clip([c - 1, c, c + 1], 0, n - 1)
+            x = torch.from_numpy(np.stack([buf[i] for i in idx])[None]).to(device).permute(0, 1, 4, 2, 3)
+            with torch.autocast(device.type, dtype=amp, enabled=amp is not None):
+                o, state, _ = model.step(x.float() / 255.0, state, dt)
+            for k, v in model.readout(o, state).items():
+                out[k].append(float(v[0]))
+            buf.pop(c - 1, None)
+            c += 1
+            bar.update(1)
+    cap.release()
+    bar.close()
+    res = {k: np.array(v) for k, v in out.items()}
+    res["vis"] = (res["vis_prob"] > cfg["eval"]["threshold"]).astype(np.int64)
+    return res
+
+
 def load_gt(video):
     """Dataset layout: .../video/<rally>.mp4 -> .../csv/<rally>_ball.csv."""
     csv = os.path.join(os.path.dirname(os.path.dirname(video)), "csv",
@@ -102,10 +139,12 @@ def draw_video(video, out_path, pred, gt, trail):
             cv2.line(frame, tuple(map(int, pts[j - 1])), tuple(map(int, pts[j])), (0, 0, 255), 2)
         if visible:
             cv2.circle(frame, (int(pred.X[i]), int(pred.Y[i])), 6, (0, 0, 255), -1)
+        elif "LatentX" in pred:
+            cv2.circle(frame, (int(pred.LatentX[i]), int(pred.LatentY[i])), 8, (0, 255, 255), 2)
         lines = [f"frame {i}  {'visible' if visible else 'not detected'}  peak {pred.Peak[i]:.2f}"]
-        if gt is not None:
-            lines.append("red: prediction   green: ground truth")
-        cv2.rectangle(frame, (10, 10), (620, 20 + 36 * len(lines)), (0, 0, 0), -1)
+        legend = "red: prediction" + ("   yellow: memory estimate" if "LatentX" in pred else "")
+        lines.append(legend + ("   green: ground truth" if gt is not None else ""))
+        cv2.rectangle(frame, (10, 10), (900, 20 + 36 * len(lines)), (0, 0, 0), -1)
         for k, text in enumerate(lines):
             cv2.putText(frame, text, (20, 42 + 36 * k), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         writer.write(frame)
@@ -126,7 +165,7 @@ def to_h264(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="runs/tracknetv5/best.pt")
+    ap.add_argument("--ckpt", default="runs/trackmem/best.pt")
     ap.add_argument("--video", default=None, help="defaults to the first video of the Test split")
     ap.add_argument("--out", default=None, help="output .mp4 path (default: outputs/<video>_pred.mp4)")
     ap.add_argument("--trail", type=int, default=8, help="frames of predicted trajectory to draw")
@@ -162,12 +201,17 @@ def main():
     if abs(w / h - cfg["data"]["width"] / cfg["data"]["height"]) > 0.01:
         print(f"warning: video is {w}x{h}, not 16:9; frames are stretched to the model input size")
 
-    p = predict_video(model, video, cfg, device, amp)
+    recurrent = getattr(model, "recurrent", False)
+    p = (predict_video_recurrent if recurrent else predict_video)(model, video, cfg, device, amp)
     sx, sy = w / cfg["data"]["width"], h / cfg["data"]["height"]
     pred = pd.DataFrame({"Frame": np.arange(len(p["vis"])), "Visibility": p["vis"],
                          "X": np.where(p["vis"] == 1, np.round(p["x"] * sx), 0).astype(int),
                          "Y": np.where(p["vis"] == 1, np.round(p["y"] * sy), 0).astype(int),
                          "Peak": np.round(p["peak"], 4)})
+    if recurrent:
+        pred["VisProb"] = np.round(p["vis_prob"], 4)
+        pred["LatentX"] = np.round(p["latent_x"] * sx).astype(int)
+        pred["LatentY"] = np.round(p["latent_y"] * sy).astype(int)
     pred.to_csv(os.path.splitext(out)[0] + ".csv", index=False)
 
     gt = None if args.no_gt else load_gt(video)

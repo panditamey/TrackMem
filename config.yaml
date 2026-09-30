@@ -17,12 +17,16 @@ data:
   limit_rallies: null         # int: use only first N rallies per split (smoke tests)
 
 model:
-  name: tracknetv5            # tracknetv5 | trackmem (coming)
+  name: tracknetv5            # tracknetv5 | trackmem
   tracknetv5:                 # defaults follow the official TrackNetV5 SDK
     rstr: true                # false = MDD + U-Net only (no R-STR head)
     conv_order: conv_relu_bn  # conv_relu_bn (SDK) | conv_bn_relu
     upsample: bilinear        # bilinear (SDK) | nearest
     mdd_init: [0.2, 0.15]
+  trackmem:                   # TrackNetV5 + learned persistent kinematic memory
+    rstr: true
+    latent_dim: 64            # learned memory vector size
+    prior_sigma_min: 1.5      # min prior Gaussian width (px @ 512x288)
 
 train:
   epochs: 30
@@ -39,12 +43,24 @@ train:
   log_every: 50
   val_every: 1
   max_steps_per_epoch: null   # int: cap steps per epoch (smoke tests)
+  trackmem:                   # recurrent training (memory in the loop)
+    seq_steps: 8              # windows per training sequence
+    warmup_epochs: 2          # single-step epochs first (detector learns before memory matters)
+    warm_start_p: 0.5         # sequences starting from noisy GT memory; rest start cold
+    false_prior_p: 0.1        # of warm starts: memory placed at a random wrong position
+    jitter_px: 3.0            # warm-start position noise
+    corrupt_p: 0.05           # per-step chance of shifting the memory mid-sequence
+    corrupt_px: 20.0
+    invisible_heatmap_weight: 0.3   # heatmap loss weight on invisible frames (visibility head handles absence)
+    vis_weight: 0.01
+    offset_weight: 0.01
 
 eval:
   threshold: 0.5
   tolerance: 4                # px
   primary_space: orig         # orig (1280x720) | input (512x288): space used for best-ckpt F1
-  ensemble: average           # center | average (average overlapping window predictions)
+  ensemble: average           # center | average (average overlapping window predictions; tracknetv5)
+  memory_mode: normal         # normal | reset (trackmem memory-use test: clear memory every frame)
   batch_size: 16
 
 subsets:
