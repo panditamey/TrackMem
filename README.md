@@ -3,9 +3,11 @@
 Research code for a lightweight persistent-memory tiny-object tracker (shuttlecock), trained from scratch.
 
 Models (`--model`):
-- `tracknetv5`: port of the official TrackNetV5 (MDD motion input + TrackNetV2 U-Net + R-STR head, 14.77M params).
-  `--set model.tracknetv5.rstr=false` gives MDD + U-Net only (11.33M).
 - `tracknetv6`: persistent object memory (in progress).
+- `tracknetv5`: baseline. Re-implementation of [TrackNetV5](https://arxiv.org/abs/2512.02789), verified
+  output-equivalent to the [official code](https://github.com/thaonan/TrackNetV5-SDK) (14.77M params).
+  Trained with our own recipe and evaluated on the official held-out Test matches, so numbers are not
+  directly comparable to the paper.
 
 ## Data
 
