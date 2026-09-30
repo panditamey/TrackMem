@@ -8,7 +8,8 @@ Reports, for both tolerance spaces:
   - error breakdown: misses (FN), false detections on invisible frames (FP2), wrong-position
     detections (FP1) split into near (tolerance..3x) and gross (>3x tolerance), per subset
   - frames one run gets right and the other wrong, per subset
-With --sweep (TrackMem, needs vis_prob): F1 for visibility thresholds >= 0.5.
+With --sweep (TrackMem, needs vis_prob): F1 for detection rules 'vis' (P(visible) > thr) and
+'product' (P(visible) x peak > thr) over a threshold grid.
 Tune thresholds on val only, then apply the chosen one to test.
 """
 import argparse
@@ -77,17 +78,27 @@ def compare(a, b, na, nb, tol):
 def sweep(df, tol):
     if "vis_prob" not in df:
         sys.exit("--sweep needs vis_prob (TrackMem frames.csv)")
-    print("\n=== visibility threshold sweep (thresholds >= the eval threshold used to write frames.csv)")
-    print(f"{'thr':>6}{'F1 orig':>10}{'F1 input':>10}{'prec in':>9}{'rec in':>8}{'FP2':>6}{'FN':>6}")
-    for thr in [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95]:
-        d = df.copy()
-        keep = (d.pred_vis == 1) & (d.vis_prob > thr)
-        d["pred_vis"] = keep.astype(int)
-        d.loc[~keep, ["pred_x", "pred_y"]] = np.nan
-        m = compute_metrics(d, tol)
-        a = m["input"]["all"]
-        print(f"{thr:>6.2f}{m['orig']['all']['f1']:>10.4f}{a['f1']:>10.4f}{a['precision']:>9.4f}"
-              f"{a['recall']:>8.4f}{a['FP2']:>6}{a['FN']:>6}")
+    has_raw = "raw_x" in df
+    if not has_raw:
+        print("\nnote: frames.csv has no raw_x/raw_y (older evaluate.py); only thresholds stricter than the "
+              "original decision can be evaluated. Re-run evaluate.py for a full sweep.")
+    print("\n=== detection-rule sweep (tune on val only)")
+    print(f"{'rule':<9}{'thr':>6}{'F1 orig':>10}{'F1 input':>10}{'prec in':>9}{'rec in':>8}{'FP2':>6}{'FN':>6}")
+    base_vis = df.pred_vis.to_numpy() == 1
+    for rule in ("vis", "product"):
+        for thr in [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+            score = df.vis_prob * df.peak if rule == "product" else df.vis_prob
+            keep = (score > thr).to_numpy()
+            if not has_raw:
+                keep &= base_vis
+            d = df.copy()
+            d["pred_vis"] = keep.astype(int)
+            xs, ys = (d.raw_x, d.raw_y) if has_raw else (d.pred_x, d.pred_y)
+            d["pred_x"], d["pred_y"] = np.where(keep, xs, np.nan), np.where(keep, ys, np.nan)
+            m = compute_metrics(d, tol)
+            a = m["input"]["all"]
+            print(f"{rule:<9}{thr:>6.2f}{m['orig']['all']['f1']:>10.4f}{a['f1']:>10.4f}{a['precision']:>9.4f}"
+                  f"{a['recall']:>8.4f}{a['FP2']:>6}{a['FN']:>6}")
 
 
 def main():

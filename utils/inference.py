@@ -53,9 +53,16 @@ def predict_rally(model, rally, seq_len, device, threshold, batch_size=16, ensem
     return out
 
 
+def detect(vis_prob, peak, threshold, rule="product"):
+    """TrackMem detection decision. 'product': P(visible) x heatmap peak > threshold (default);
+    'vis': P(visible) > threshold alone."""
+    score = vis_prob * peak if rule == "product" else vis_prob
+    return (score > threshold).astype(np.int64)
+
+
 @torch.no_grad()
 def predict_rallies_recurrent(model, rallies, device, amp=None, batch_size=16, memory_mode="normal",
-                              threshold=0.5, progress=False):
+                              threshold=0.5, progress=False, rule="product"):
     """Run a recurrent model (TrackMem) frame by frame over whole rallies, several rallies in
     parallel. memory_mode='reset' clears the memory every step (memory-use test).
     Returns {rally key: dict of per-frame arrays} in input space."""
@@ -87,7 +94,7 @@ def predict_rallies_recurrent(model, rallies, device, amp=None, batch_size=16, m
                 bar.update(sum(c < n for n in lens))
         for r in chunk:
             p = rec[r.key]
-            p["vis"] = (p["vis_prob"] > threshold).astype(np.int64)
+            p["vis"] = detect(p["vis_prob"], p["peak"], threshold, rule)
             results[r.key] = p
     if bar:
         bar.close()
@@ -101,7 +108,8 @@ def evaluate_rallies(model, rallies, cfg, device, amp=None, progress=False):
     recurrent = getattr(model, "recurrent", False)
     if recurrent:
         preds = predict_rallies_recurrent(model, rallies, device, amp, e["batch_size"],
-                                          e.get("memory_mode", "normal"), e["threshold"], progress)
+                                          e.get("memory_mode", "normal"), e["threshold"], progress,
+                                          e.get("detect", "product"))
     rows = []
     it = rallies
     if progress and not recurrent:
@@ -120,6 +128,7 @@ def evaluate_rallies(model, rallies, cfg, device, amp=None, progress=False):
                            "pred_y": np.where(p["vis"] == 1, p["y"], np.nan), "peak": p["peak"]})
         if recurrent:
             df["vis_prob"], df["latent_x"], df["latent_y"] = p["vis_prob"], p["latent_x"], p["latent_y"]
+            df["raw_x"], df["raw_y"] = p["x"], p["y"]   # position for every frame (offline threshold sweeps)
         for k, v in tags.items():
             df[f"tag_{k}"] = v
         rows.append(df)

@@ -61,6 +61,7 @@ eval:
   primary_space: orig         # orig (1280x720) | input (512x288): space used for best-ckpt F1
   ensemble: average           # center | average (average overlapping window predictions; tracknetv5)
   memory_mode: normal         # normal | reset (trackmem memory-use test: clear memory every frame)
+  detect: product             # trackmem: product = P(visible) x heatmap peak > threshold | vis = P(visible) alone
   batch_size: 16
 
 subsets:

@@ -28,7 +28,7 @@ from tqdm import tqdm
 
 from models import build_model
 from utils.common import amp_dtype
-from utils.inference import predict_rally
+from utils.inference import detect, predict_rally
 
 
 class FrameClip:
@@ -108,7 +108,7 @@ def predict_video_recurrent(model, path, cfg, device, amp):
     cap.release()
     bar.close()
     res = {k: np.array(v) for k, v in out.items()}
-    res["vis"] = (res["vis_prob"] > cfg["eval"]["threshold"]).astype(np.int64)
+    res["vis"] = detect(res["vis_prob"], res["peak"], cfg["eval"]["threshold"], cfg["eval"].get("detect", "product"))
     return res
 
 
