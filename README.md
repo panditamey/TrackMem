@@ -26,4 +26,4 @@ per-frame predictions to `eval_<split>/frames.csv`.
 
 ## Colab
 
-Open `colab/train_b0.ipynb`. Needs `MyDrive/TrackNetDataset/TrackNetV2.zip` in Drive and a `GITHUB_TOKEN` Colab secret.
+Open in Colab: https://colab.research.google.com/github/panditamey/TrackNetV6/blob/main/colab/train_b0.ipynb Needs `MyDrive/TrackNetDataset/TrackNetV2.zip` in Drive.
