@@ -1,0 +1,53 @@
+# B0: TrackNetV5-like baseline (V2 U-Net + MDD input, WBCE), no R-STR, no memory.
+experiment: b0_v5like
+seed: 42
+
+data:
+  root: data/TracknetV2
+  cache: data/cache/frames_512x288      # written by tools/extract_frames.py
+  width: 512
+  height: 288
+  train_splits: [Professional, Amateur]
+  val_matches: [Professional/match21, Professional/match22, Professional/match23]
+  test_splits: [Test]
+  seq_len: 3                  # frames per window (t-1, t, t+1), as in V5
+  train_stride: 1             # window center step when building training samples
+  heatmap_radius: 2.5         # binary disk radius (px @ 512x288), TrackNetV3 convention
+  hflip: 0.5
+  limit_rallies: null         # int: use only first N rallies per split (smoke tests)
+
+model:
+  name: b0
+  motion: mdd                 # mdd | none  (none = plain RGB stack, V2-style)
+  width_mult: 1.0
+
+train:
+  epochs: 30
+  batch_size: 8               # V5 used 2; larger batch for faster Colab runs
+  lr: 1.0e-4
+  weight_decay: 1.0e-2
+  milestones: [20, 25]
+  gamma: 0.1
+  num_workers: 8
+  amp: auto                   # auto | bf16 | fp16 | off
+  compile: false
+  out_dir: runs
+  log_every: 50
+  val_every: 1
+  max_steps_per_epoch: null   # int: cap steps per epoch (smoke tests)
+
+eval:
+  threshold: 0.5
+  tolerance: 4                # px
+  primary_space: orig         # orig (1280x720) | input (512x288): space used for best-ckpt F1
+  ensemble: average           # center | average (average overlapping window predictions)
+  batch_size: 16
+
+subsets:
+  fast_speed: 9.5             # px/frame @512 width (~p90 of dataset speed)
+  top_border: 0.08            # fraction of height: gap bracket above this = out-of-frame
+  short_gap: 3                # invisible run length <= this = short occlusion
+  reappear_frames: 3          # visible frames after a gap tagged as reappearance
+  reappear_min_gap: 2
+  hit_angle: 60               # deg velocity direction change tagged as hit
+  hit_window: 2               # frames around a hit also tagged

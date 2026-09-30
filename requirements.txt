@@ -1,0 +1,6 @@
+torch>=2.1
+numpy
+opencv-python
+pandas
+pyyaml
+tqdm
