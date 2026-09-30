@@ -16,6 +16,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 import cv2
 import numpy as np
+from tqdm import tqdm
 
 W, H = 512, 288
 
@@ -64,13 +65,16 @@ def main():
         jobs.append((video, out_path))
         keys.append(dict(split=split, match=match, rally=rally, csv=csv, video=video, frames=out_path))
 
-    index = []
+    index, total = [], 0
     with ProcessPoolExecutor(args.workers) as pool:
-        for i, (key, meta) in enumerate(zip(keys, pool.map(extract, jobs))):
+        bar = tqdm(zip(keys, pool.map(extract, jobs)), total=len(jobs), unit="rally", desc="decode")
+        for key, meta in bar:
             n_labels = sum(1 for _ in open(key["csv"])) - 1
             index.append({**key, **meta, "n_labels": n_labels})
-            print(f"[{i + 1}/{len(jobs)}] {key['split']}/{key['match']}/{key['rally']} "
-                  f"decoded={meta['n_decoded']} labels={n_labels} fps={meta['fps']:.2f}", flush=True)
+            total += meta["n_decoded"]
+            bar.set_postfix(frames=total, last=f"{key['match']}/{key['rally']}")
+    mismatched = sum(m["n_decoded"] != m["n_labels"] for m in index)
+    print(f"decoded {len(index)} rallies, {total} frames; {mismatched} rallies with frame/label count mismatch")
 
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "index.json"), "w") as f:
