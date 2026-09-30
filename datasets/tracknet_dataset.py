@@ -84,15 +84,23 @@ def disk_heatmap(xy, vis, height, width, radius):
     return out
 
 
+def disk_heatmap_torch(xy, vis, height, width, radius):
+    """Batched GPU version of disk_heatmap. xy: (B, T, 2), vis: (B, T) -> (B, T, H, W) float."""
+    ys = torch.arange(height, device=xy.device, dtype=torch.float32).view(1, 1, height, 1)
+    xs = torch.arange(width, device=xy.device, dtype=torch.float32).view(1, 1, 1, width)
+    d2 = (xs - xy[..., 0, None, None]) ** 2 + (ys - xy[..., 1, None, None]) ** 2
+    return ((d2 <= radius ** 2) & vis.bool()[..., None, None]).float()
+
+
 class WindowDataset(Dataset):
-    """Training samples: seq_len-frame windows with per-frame heatmaps and labels."""
+    """Training samples: seq_len-frame windows with per-frame labels.
+    Heatmap targets are built on the GPU by the training loop (disk_heatmap_torch)."""
 
     def __init__(self, rallies, cfg, train=True):
         d = cfg["data"]
         self.rallies = rallies
         self.seq_len = d["seq_len"]
         self.h, self.w = d["height"], d["width"]
-        self.radius = d["heatmap_radius"]
         self.hflip = d["hflip"] if train else 0.0
         stride = d["train_stride"] if train else 1
         self.samples = [(ri, c) for ri, r in enumerate(rallies) for c in range(0, len(r), stride)]
@@ -112,10 +120,8 @@ class WindowDataset(Dataset):
             frames = frames[:, :, ::-1].copy()
             xy[:, 0] = np.where(vis == 1, self.w - 1 - xy[:, 0], 0.0)
 
-        heatmaps = disk_heatmap(xy, vis, self.h, self.w, self.radius)
         return {
             "frames": torch.from_numpy(frames).permute(0, 3, 1, 2),   # (T, 3, H, W) uint8
-            "heatmaps": torch.from_numpy(heatmaps),                    # (T, H, W)
             "vis": torch.from_numpy(vis),
             "xy": torch.from_numpy(xy),
         }

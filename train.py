@@ -11,7 +11,7 @@ import time
 import torch
 from torch.utils.data import DataLoader
 
-from datasets.tracknet_dataset import WindowDataset, load_rallies
+from datasets.tracknet_dataset import WindowDataset, disk_heatmap_torch, load_rallies
 from losses.heatmap import wbce_loss
 from models.baseline import build_model
 from utils.common import amp_dtype, load_config, seed_everything
@@ -70,7 +70,9 @@ def main():
             if t["max_steps_per_epoch"] and step >= t["max_steps_per_epoch"]:
                 break
             frames = batch["frames"].to(device, non_blocking=True).float() / 255.0
-            target = batch["heatmaps"].to(device, non_blocking=True)
+            target = disk_heatmap_torch(batch["xy"].to(device, non_blocking=True),
+                                        batch["vis"].to(device, non_blocking=True),
+                                        d["height"], d["width"], d["heatmap_radius"])
             with torch.autocast(device.type, dtype=amp, enabled=amp is not None):
                 logits = fwd(frames)
             loss = wbce_loss(logits, target)
