@@ -1,9 +1,9 @@
-# TrackNetV6
+# TrackMem
 
 Research code for a lightweight persistent-memory tiny-object tracker (shuttlecock), trained from scratch.
 
 Models (`--model`):
-- `tracknetv6`: persistent object memory (in progress).
+- `trackmem`: TrackNet with persistent kinematic memory (in progress).
 - `tracknetv5`: baseline. Re-implementation of [TrackNetV5](https://arxiv.org/abs/2512.02789), verified
   output-equivalent to the [official code](https://github.com/thaonan/TrackNetV5-SDK) (14.77M params).
   Trained with our own recipe and evaluated on the official held-out Test matches, so numbers are not
@@ -41,5 +41,5 @@ predictions in the dataset label format (`Frame,Visibility,X,Y,Peak`).
 
 ## Colab
 
-Open in Colab: https://colab.research.google.com/github/panditamey/TrackNetV6/blob/main/colab/train.ipynb
+Open in Colab: https://colab.research.google.com/github/panditamey/TrackMem/blob/main/colab/train.ipynb
 Needs `MyDrive/TrackNetDataset/TrackNetV2.zip` in Drive. Set `MODEL` in the first cell.

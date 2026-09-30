@@ -17,7 +17,7 @@ data:
   limit_rallies: null         # int: use only first N rallies per split (smoke tests)
 
 model:
-  name: tracknetv5            # tracknetv5 | tracknetv6 (coming)
+  name: tracknetv5            # tracknetv5 | trackmem (coming)
   tracknetv5:                 # defaults follow the official TrackNetV5 SDK
     rstr: true                # false = MDD + U-Net only (no R-STR head)
     conv_order: conv_relu_bn  # conv_relu_bn (SDK) | conv_bn_relu
