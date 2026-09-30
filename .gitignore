@@ -3,3 +3,4 @@ zips/
 runs/
 __pycache__/
 *.pt
+outputs/
