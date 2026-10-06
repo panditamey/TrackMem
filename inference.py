@@ -3,6 +3,7 @@
     python inference.py                                   # best ckpt, first Test rally video
     python inference.py --video my_match.mp4 --out out/my_match_pred.mp4
     python inference.py --ckpt runs/tracknetv5/best.pt --video data/TracknetV2/Test/match1/video/1_05_02.mp4
+    python inference.py --ckpt runs/trackmem_v2/best.pt --set eval.threshold=0.15   # detection threshold
 
 Outputs:
     <out>.mp4     annotated video: prediction (red) + trail, GT (green) if a dataset CSV exists,
@@ -27,7 +28,7 @@ import torch
 from tqdm import tqdm
 
 from models import build_model
-from utils.common import amp_dtype
+from utils.common import amp_dtype, apply_overrides
 from utils.inference import detect, predict_rally
 
 
@@ -171,11 +172,12 @@ def main():
     ap.add_argument("--trail", type=int, default=8, help="frames of predicted trajectory to draw")
     ap.add_argument("--no-gt", action="store_true", help="don't draw ground truth even if available")
     ap.add_argument("--batch-size", type=int, default=None, help="windows per forward pass (default: from ckpt)")
+    ap.add_argument("--set", nargs="*", default=[], help="config overrides, e.g. eval.threshold=0.15")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ck = torch.load(args.ckpt, map_location=device)
-    cfg = ck["cfg"]
+    cfg = apply_overrides(ck["cfg"], args.set)
     if args.batch_size:
         cfg["eval"]["batch_size"] = args.batch_size
     model = build_model(cfg).to(device).to(memory_format=torch.channels_last)
