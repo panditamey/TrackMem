@@ -87,7 +87,7 @@ def predict_video_recurrent(model, path, cfg, device, amp):
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     dt = torch.tensor([[30.0 / (cap.get(cv2.CAP_PROP_FPS) or 30.0)]], device=device)
     state = model.memory.init_cold(1, device, W, H)
-    buf, out, n, c, eof = {}, {k: [] for k in ("vis_prob", "x", "y", "peak", "latent_x", "latent_y")}, 0, 0, False
+    buf, out, n, c, eof = {}, {}, 0, 0, False
     bar = tqdm(total=total, unit="frame", desc="infer")
     while not eof:
         ok, frame = cap.read()
@@ -101,7 +101,7 @@ def predict_video_recurrent(model, path, cfg, device, amp):
             with torch.autocast(device.type, dtype=amp, enabled=amp is not None):
                 o, state, _ = model.step(x.float() / 255.0, state, dt)
             for k, v in model.readout(o, state).items():
-                out[k].append(float(v[0]))
+                out.setdefault(k, []).append(float(v[0]))
             buf.pop(c - 1, None)
             c += 1
             bar.update(1)
