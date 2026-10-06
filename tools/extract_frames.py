@@ -46,6 +46,7 @@ def main():
     ap.add_argument("--root", default="data/TracknetV2")
     ap.add_argument("--out", default="data/cache/frames_512x288")
     ap.add_argument("--splits", nargs="*", default=None, help="e.g. Professional Test")
+    ap.add_argument("--matches", nargs="*", default=None, help="e.g. Professional/match21 (split/match)")
     ap.add_argument("--limit", type=int, default=None, help="max rallies per split (smoke tests)")
     ap.add_argument("--workers", type=int, default=os.cpu_count())
     args = ap.parse_args()
@@ -55,6 +56,8 @@ def main():
         parts = csv.split(os.sep)
         split, match = parts[-4], parts[-3]
         if args.splits and split not in args.splits:
+            continue
+        if args.matches and f"{split}/{match}" not in args.matches:
             continue
         per_split[split] = per_split.get(split, 0) + 1
         if args.limit and per_split[split] > args.limit:
