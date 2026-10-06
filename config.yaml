@@ -27,6 +27,9 @@ model:
     rstr: true
     latent_dim: 64            # learned memory vector size
     prior_sigma_min: 1.5      # min prior Gaussian width (px @ 512x288)
+    fusion: late              # late = prior joins after an image-only U-Net, memory measures the
+                              #   prior-free evidence map | early = prior as input channels (first run)
+    vis_memory: true          # visibility head also sees memory speed / confidence / out-of-frame
 
 train:
   epochs: 30
@@ -47,12 +50,15 @@ train:
     seq_steps: 8              # windows per training sequence
     warmup_epochs: 2          # single-step epochs first (detector learns before memory matters)
     warm_start_p: 0.5         # sequences starting from noisy GT memory; rest start cold
-    false_prior_p: 0.1        # of warm starts: memory placed at a random wrong position
+    false_prior_p: 0.4        # of warm starts: memory placed at a random wrong position (first run 0.1)
     jitter_px: 3.0            # warm-start position noise
-    corrupt_p: 0.05           # per-step chance of shifting the memory mid-sequence
-    corrupt_px: 20.0
+    corrupt_p: 0.2            # per-step chance of shifting the memory mid-sequence (first run 0.05)
+    corrupt_px: 60.0          # (first run 20)
+    prior_dropout: 0.4        # per-step chance of hiding the prior from the detector
     invisible_heatmap_weight: 0.3   # heatmap loss weight on invisible frames (visibility head handles absence)
     vis_weight: 0.01
+    vis_invisible_weight: 3.0 # visibility BCE weight on invisible frames (first run 1)
+    evidence_weight: 1.0      # heatmap loss on the prior-free evidence map (late fusion)
     offset_weight: 0.01
 
 eval:

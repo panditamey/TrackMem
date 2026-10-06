@@ -5,7 +5,8 @@ Research code for a lightweight persistent-memory tiny-object tracker (shuttleco
 Models (`--model`):
 - `trackmem`: TrackNetV5 + a learned persistent kinematic memory (position, velocity, acceleration,
   uncertainty, latent state) fed back into detection as prior heatmaps, with visibility and sub-pixel
-  offset heads. Trained recurrently on 8-frame sequences; inference carries the memory across whole
+  offset heads. The prior joins after an image-only U-Net (`model.trackmem.fusion: late`); the memory
+  updates from that prior-free evidence map, so it cannot confirm its own wrong guess. Trained recurrently on 8-frame sequences; inference carries the memory across whole
   rallies.
 - `tracknetv5`: baseline. Re-implementation of [TrackNetV5](https://arxiv.org/abs/2512.02789), verified
   output-equivalent to the [official code](https://github.com/thaonan/TrackNetV5-SDK) (14.77M params).

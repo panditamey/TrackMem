@@ -55,7 +55,8 @@ def sequence_loss(model, batch, cfg, device, amp, train=True):
         if train and k > 0 and tm["corrupt_p"] > 0:
             state = corrupt_state(state, tm["corrupt_p"], tm["corrupt_px"])
         with torch.autocast(device.type, dtype=amp, enabled=amp is not None):
-            out, state, _ = model.step(frames[:, k:k + 3], state, b["dt"])
+            out, state, _ = model.step(frames[:, k:k + 3], state, b["dt"],
+                                       tm.get("prior_dropout", 0.0) if train else 0.0)
         loss, p = trackmem_step_loss(out, heat[:, k:k + 3], b["vis"][:, k:k + 3], b["xy"][:, k:k + 3], tm)
         total = total + loss / steps
         for key, v in p.items():

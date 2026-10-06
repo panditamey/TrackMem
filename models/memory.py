@@ -81,6 +81,22 @@ class KinematicMemory(nn.Module):
                 maps.append(state["conf"][:, :, None] * torch.exp(-0.5 * g))
             return torch.stack(maps, dim=1)
 
+    def vis_features(self, state, dt, width, height):
+        """Memory cues for the visibility head, per window frame -> (B, 3, 3):
+        distance of the predicted position outside the frame, memory speed, memory confidence.
+        A shuttle the memory sees standing still (held before a serve, on the floor after a
+        rally) is not in play and is labelled invisible."""
+        with torch.autocast(state["p"].device.type, enabled=False):
+            corr, step_sigma = self._dynamics(state)
+            speed = (state["v"].norm(dim=1, keepdim=True) / 10.0).clamp(max=3.0)
+            feats = []
+            for k in range(3):
+                p, _ = self._predict(state, k, dt, corr, step_sigma)
+                outside = (F.relu(-p[:, 0]) + F.relu(p[:, 0] - width) +
+                           F.relu(-p[:, 1]) + F.relu(p[:, 1] - height)) / 32.0
+                feats.append(torch.cat([outside.clamp(max=2.0)[:, None], speed, state["conf"]], dim=1))
+            return torch.stack(feats, dim=1)
+
     # ----------------------------------------------------------------------- measurement
     def measure(self, logits_c):
         """Local soft-argmax around the peak of the centre-frame logits (B, H, W).
@@ -107,7 +123,9 @@ class KinematicMemory(nn.Module):
             p1, var1 = self._predict(state, 1, dt, corr, step_sigma)
             v1, a1 = state["v"] + state["a"] * dt, state["a"]
 
-            z, peak, ent = self.measure(out["logits"][:, 1].float())
+            # Measure from the prior-free evidence map when the model has one, so the memory
+            # never reads back its own prior as confirmation.
+            z, peak, ent = self.measure(out.get("evidence", out["logits"])[:, 1].float())
             lv = out["vis_logit"][:, 1:2].float().clamp(-10, 10)
             innov = z - p1
             sd = var1.mean(1, keepdim=True).sqrt().clamp(min=1.0)

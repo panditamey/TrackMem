@@ -76,8 +76,7 @@ def predict_rallies_recurrent(model, rallies, device, amp=None, batch_size=16, m
         b, lens = len(chunk), [len(r) for r in chunk]
         dt = torch.tensor([[30.0 / r.fps] for r in chunk], device=device)
         state = model.memory.init_cold(b, device, model.w, model.h)
-        rec = {r.key: {k: np.zeros(len(r)) for k in ("vis_prob", "x", "y", "peak", "latent_x", "latent_y")}
-               for r in chunk}
+        rec = {r.key: {} for r in chunk}
         for c in range(max(lens)):
             batch = np.stack([r.frames[r.window(min(c, len(r) - 1), 3)] for r in chunk])
             frames = torch.from_numpy(batch).to(device).permute(0, 1, 4, 2, 3).float() / 255.0
@@ -88,8 +87,8 @@ def predict_rallies_recurrent(model, rallies, device, amp=None, batch_size=16, m
             ro = {k: v.float().cpu().numpy() for k, v in model.readout(out, state).items()}
             for i, r in enumerate(chunk):
                 if c < lens[i]:
-                    for k in rec[r.key]:
-                        rec[r.key][k][c] = ro[k][i]
+                    for k, v in ro.items():
+                        rec[r.key].setdefault(k, np.zeros(len(r)))[c] = v[i]
             if bar:
                 bar.update(sum(c < n for n in lens))
         for r in chunk:
@@ -129,6 +128,9 @@ def evaluate_rallies(model, rallies, cfg, device, amp=None, progress=False):
         if recurrent:
             df["vis_prob"], df["latent_x"], df["latent_y"] = p["vis_prob"], p["latent_x"], p["latent_y"]
             df["raw_x"], df["raw_y"] = p["x"], p["y"]   # position for every frame (offline threshold sweeps)
+            for k in ("ev_x", "ev_y", "ev_peak"):
+                if k in p:
+                    df[k] = p[k]
         for k, v in tags.items():
             df[f"tag_{k}"] = v
         rows.append(df)
