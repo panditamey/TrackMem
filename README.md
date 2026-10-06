@@ -32,7 +32,6 @@ F1 by scenario:
 Notes:
 - **Single seed.** Each model has one training run.
 - **Detection threshold.** TrackMem uses 0.15 on P(visible) × heatmap peak, tuned on the validation matches only.
-- **Other metric.** With the 4 px tolerance measured at 512×288 instead, as in the official TrackNetV5 code, TrackNetV5 scores 0.959 and TrackMem 0.953.
 - **Comparing with published TrackNet numbers.** Papers in the series use different splits, tolerances and resolutions. For example, reported TrackNetV2 F1 on this dataset ranges from 0.91 to 0.97. So we only compare against models we retrain under one protocol, not against published figures.
 
 ## How TrackMem differs from the TrackNet family
