@@ -94,6 +94,9 @@ Settings live in `config.yaml`, and any of them can be overridden with `--set ke
 Evaluation reports F1, precision, recall and localization error at 4 px, in both 1280×720 and 512×288 space. Results are given overall and per scenario: normal, fast, hit, reappearing, short and long occlusion, out of frame, and rally start/end. Per-frame predictions are written to `eval_<split>/frames.csv`.
 
 ## Model output
+Test Clip Prediction Output : 
+
+https://github.com/user-attachments/assets/136e14fd-1d90-4768-bfee-9154cbbee123
 
 ```bash
 python inference.py --ckpt runs/trackmem/best.pt --set eval.threshold=0.15          # first Test rally
