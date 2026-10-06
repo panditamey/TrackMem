@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@500&display=block" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a1020;
+    --grid: rgba(148, 163, 184, 0.06);
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --det: #fb923c;
+    --mem: #38bdf8;
+  }
+  html, body { margin: 0; width: 1280px; height: 400px; background: var(--bg); overflow: hidden; }
+  body {
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(900px 400px at 85% 30%, rgba(56, 189, 248, 0.10), transparent 60%),
+      radial-gradient(700px 300px at 10% 100%, rgba(251, 146, 60, 0.08), transparent 60%),
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 40px 40px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 40px 40px,
+      var(--bg);
+    position: relative;
+  }
+  .left { position: absolute; left: 64px; top: 120px; width: 560px; }
+  h1 { font-size: 76px; font-weight: 800; letter-spacing: -2.5px; margin: 0; line-height: 1; }
+  h1 span { color: var(--mem); }
+  .tag { font-size: 23px; font-weight: 500; color: #cbd5e1; margin-top: 18px; line-height: 1.35; }
+  .chips { display: flex; gap: 10px; margin-top: 26px; }
+  .chip {
+    font-size: 15px; font-weight: 600; color: var(--text);
+    padding: 7px 14px; border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(15, 23, 42, 0.7);
+  }
+  .stats { position: absolute; left: 64px; bottom: 44px; font-family: "JetBrains Mono", monospace; font-size: 14px; color: var(--muted); }
+  .stats b { color: var(--text); font-weight: 500; }
+  svg { position: absolute; right: 48px; top: 70px; }
+  .lbl { font-family: "Inter", sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 0.4px; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <h1>Track<span>Mem</span></h1>
+    <div class="tag">Persistent memory for tracking small,<br>fast sports objects.</div>
+  </div>
+
+  <svg width="560" height="280" viewBox="0 0 620 310">
+    <defs>
+      <radialGradient id="glow">
+        <stop offset="0" stop-color="#38bdf8" stop-opacity="0.55"/>
+        <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="fade" x1="0" x2="1">
+        <stop offset="0" stop-color="#fb923c" stop-opacity="0.15"/>
+        <stop offset="1" stop-color="#fb923c" stop-opacity="1"/>
+      </linearGradient>
+    </defs>
+
+    <!-- occluder -->
+    <rect x="268" y="40" width="110" height="200" rx="14" fill="rgba(148,163,184,0.10)" stroke="rgba(148,163,184,0.28)" stroke-dasharray="4 5"/>
+    <text x="323" y="232" text-anchor="middle" class="lbl" fill="#64748b">OCCLUDED</text>
+
+    <!-- trajectory: detections before occlusion -->
+    <path d="M 30 230 Q 150 20 270 95" fill="none" stroke="url(#fade)" stroke-width="2.5"/>
+    <g fill="#fb923c">
+      <circle cx="30" cy="230" r="3" opacity="0.25"/>
+      <circle cx="62" cy="176" r="3.5" opacity="0.35"/>
+      <circle cx="98" cy="131" r="4" opacity="0.5"/>
+      <circle cx="138" cy="99" r="4.5" opacity="0.65"/>
+      <circle cx="180" cy="81" r="5" opacity="0.8"/>
+      <circle cx="224" cy="79" r="5.5" opacity="0.9"/>
+      <circle cx="262" cy="90" r="6"/>
+    </g>
+
+    <!-- memory carries through occlusion -->
+    <path d="M 270 95 Q 325 115 380 150" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="6 6"/>
+    <g fill="none" stroke="#38bdf8" stroke-width="2">
+      <circle cx="300" cy="104" r="6" opacity="0.8"/>
+      <circle cx="340" cy="122" r="6" opacity="0.8"/>
+    </g>
+
+    <!-- prior at re-entry + detection resumes -->
+    <circle cx="392" cy="158" r="34" fill="url(#glow)"/>
+    <path d="M 392 158 Q 450 200 520 290" fill="none" stroke="#fb923c" stroke-width="2.5"/>
+    <g fill="#fb923c">
+      <circle cx="392" cy="158" r="6.5"/>
+      <circle cx="430" cy="184" r="6"/>
+      <circle cx="466" cy="220" r="6"/>
+      <circle cx="498" cy="260" r="6"/>
+    </g>
+    <text x="436" y="150" class="lbl" fill="#38bdf8">MEMORY PRIOR</text>
+
+    <!-- legend -->
+    <g class="lbl">
+      <circle cx="470" cy="34" r="5" fill="#fb923c"/>
+      <text x="482" y="39" fill="#cbd5e1">detection</text>
+      <circle cx="470" cy="58" r="5" fill="none" stroke="#38bdf8" stroke-width="2"/>
+      <text x="482" y="63" fill="#cbd5e1">memory</text>
+    </g>
+  </svg>
+</body>
+</html>
