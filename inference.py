@@ -6,8 +6,8 @@
     python inference.py --ckpt runs/trackmem_v2/best.pt --set eval.threshold=0.15   # detection threshold
 
 Outputs:
-    <out>.mp4     annotated video: prediction (red) + trail, GT (green) if a dataset CSV exists,
-                  TrackMem memory estimate while the shuttle is not detected (yellow)
+    <out>.mp4     annotated video: model prediction (red) + trail, GT (green) and a per-frame
+                  OK / MISS / FP / OFF label if a dataset CSV exists
     <out>.csv     predictions in the dataset label format: Frame,Visibility,X,Y (+ Peak; TrackMem also
                   VisProb, LatentX, LatentY), video resolution
 
@@ -120,37 +120,62 @@ def load_gt(video):
     return pd.read_csv(csv) if os.path.exists(csv) else None
 
 
-def draw_video(video, out_path, pred, gt, trail):
+def draw_video(video, out_path, pred, gt, trail, tol=4.0):
+    """Annotate the video. With GT, each frame is labelled against it: OK, MISS, FP (shuttle not
+    visible), or OFF (detected more than `tol` px away; tol in model input pixels, as in the input-space
+    metric). The trail only joins consecutive detections. Returns counts per label."""
     cap = cv2.VideoCapture(video)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    tol_px = tol * w / 512
     writer = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    colours = {"OK": (0, 200, 0), "MISS": (0, 165, 255), "FP": (0, 0, 255), "OFF": (0, 0, 255)}
+    counts = {}
     history = []
     for i in tqdm(range(len(pred)), unit="frame", desc="draw"):
         ok, frame = cap.read()
         if not ok:
             break
-        if gt is not None and i < len(gt) and gt.Visibility[i]:
+        g_vis = gt is not None and i < len(gt) and bool(gt.Visibility[i])
+        if g_vis:
             cv2.circle(frame, (int(gt.X[i]), int(gt.Y[i])), 10, (0, 255, 0), 2)
         visible = bool(pred.Visibility[i])
         history.append((pred.X[i], pred.Y[i]) if visible else None)
         history = history[-trail:]
-        pts = [p for p in history if p is not None]
-        for j in range(1, len(pts)):
-            cv2.line(frame, tuple(map(int, pts[j - 1])), tuple(map(int, pts[j])), (0, 0, 255), 2)
+        for a, b in zip(history, history[1:]):
+            if a is not None and b is not None:   # no lines across frames without a detection
+                cv2.line(frame, tuple(map(int, a)), tuple(map(int, b)), (0, 0, 255), 2)
         if visible:
             cv2.circle(frame, (int(pred.X[i]), int(pred.Y[i])), 6, (0, 0, 255), -1)
-        elif "LatentX" in pred:
-            cv2.circle(frame, (int(pred.LatentX[i]), int(pred.LatentY[i])), 8, (0, 255, 255), 2)
-        lines = [f"frame {i}  {'visible' if visible else 'not detected'}  peak {pred.Peak[i]:.2f}"]
-        legend = "red: prediction" + ("   yellow: memory estimate" if "LatentX" in pred else "")
-        lines.append(legend + ("   green: ground truth" if gt is not None else ""))
-        cv2.rectangle(frame, (10, 10), (900, 20 + 36 * len(lines)), (0, 0, 0), -1)
-        for k, text in enumerate(lines):
-            cv2.putText(frame, text, (20, 42 + 36 * k), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+        status = ""
+        if gt is not None and i < len(gt):
+            if visible and not g_vis:
+                status = "FP"
+            elif visible:
+                d = float(np.hypot(pred.X[i] - gt.X[i], pred.Y[i] - gt.Y[i]))
+                status = "OK" if d < tol_px else "OFF"
+            elif g_vis:
+                status = "MISS"
+            if status:
+                counts[status] = counts.get(status, 0) + 1
+        info = f"frame {i}  {'detected' if visible else 'not detected'}  peak {pred.Peak[i]:.2f}"
+        if "VisProb" in pred:
+            info += f"  P(visible) {pred.VisProb[i]:.2f}"
+        lines = [(info, (255, 255, 255))]
+        if status:
+            text = (f"OFF: {d / (w / 512):.0f} px from label" if status == "OFF"
+                    else {"FP": "FP: no shuttle in label", "MISS": "MISS", "OK": "OK"}[status])
+            lines.append((text, colours[status]))
+        legend = "red: prediction   green: ground truth" if gt is not None else "red: prediction"
+        lines.append((legend, (255, 255, 255)))
+        cv2.rectangle(frame, (10, 10), (1000, 20 + 36 * len(lines)), (0, 0, 0), -1)
+        for k, (text, col) in enumerate(lines):
+            cv2.putText(frame, text, (20, 42 + 36 * k), cv2.FONT_HERSHEY_SIMPLEX, 0.8, col, 2)
         writer.write(frame)
     cap.release()
     writer.release()
+    return counts
 
 
 def to_h264(path):
@@ -217,10 +242,12 @@ def main():
     pred.to_csv(os.path.splitext(out)[0] + ".csv", index=False)
 
     gt = None if args.no_gt else load_gt(video)
-    draw_video(video, out, pred, gt, args.trail)
+    counts = draw_video(video, out, pred, gt, args.trail, cfg["eval"]["tolerance"])
     to_h264(out)
     print(f"detected in {pred.Visibility.mean():.1%} of {len(pred)} frames; saved {out} and "
           f"{os.path.splitext(out)[0]}.csv")
+    if counts:
+        print("vs ground truth (input-space tolerance): " + "  ".join(f"{k} {v}" for k, v in sorted(counts.items())))
 
 
 if __name__ == "__main__":
